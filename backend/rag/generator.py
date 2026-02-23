@@ -18,6 +18,14 @@ from rag.retriever import retrieve, course_has_data
 
 logger = logging.getLogger(__name__)
 
+
+def _msg_content(part) -> str:
+    """ollama 0.3.x returns dicts, 0.6.x returns objects — handle both"""
+    if isinstance(part, dict):
+        return part.get("message", {}).get("content", "") or ""
+    return part.message.content or ""
+
+
 # ── Prompt templates ─────────────────────────────────────────────────────────
 
 SYSTEM_CHAT = """You are an AI assistant for students, specialized in course materials.
@@ -133,7 +141,7 @@ async def chat_stream(
             messages=messages,
             stream=True,
         ):
-            token = part.message.content
+            token = _msg_content(part)
             if token:
                 if first_token:
                     logger.info(f"[PERF] chat first token: {time.perf_counter()-t_llm:.3f}s")
@@ -180,7 +188,7 @@ async def chat(
             messages=messages,
             stream=True,
         ):
-            token = part.message.content
+            token = _msg_content(part)
             if token:
                 full_response += token
     except Exception as e:
@@ -276,7 +284,7 @@ async def generate_quiz(
             stream=False,
         )
         logger.info(f"[PERF] quiz LLM done: {time.perf_counter()-t_quiz:.3f}s")
-        raw = response.message.content.strip()
+        raw = _msg_content(response).strip()
     except Exception as e:
         raise RuntimeError(f"ollama quiz error: {e}") from e
 

@@ -118,11 +118,13 @@ async def health():
     try:
         client = ollama.AsyncClient(host=settings.ollama_url)
         models_resp = await client.list()
-        # ollama 0.6.x returns ListResponse with .models (pydantic objects)
-        ollama_ok = any(
-            settings.ollama_model in (m.model or "")
-            for m in (models_resp.models or [])
-        )
+        # ollama 0.3.x returns a plain dict: {"models": [...]}
+        # ollama 0.6.x returns a ListResponse object with .models
+        if isinstance(models_resp, dict):
+            model_names = [m.get("model", "") or m.get("name", "") for m in models_resp.get("models", [])]
+        else:
+            model_names = [m.model or "" for m in (models_resp.models or [])]
+        ollama_ok = any(settings.ollama_model in name for name in model_names)
     except Exception as e:
         logger.warning(f"ollama not reachable: {e}")
 
