@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+
+# Backend data & logs
+backend/data/
+backend/logs/
+backend/.env
+
+# ChromaDB
+*.sqlite3
+
+# Downloads temp
+backend/data/downloads/
+
+# macOS
+.DS_Store
+*.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.code-workspace
+
+# Node (for future)
+node_modules/
+
+# Scratch / temp root files
+index.html
+Sheet1.html

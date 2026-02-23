@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Else AI Companion — Preview</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #f4f6f9;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+    }
+
+    /* Fake Moodle header */
+    .moodle-header {
+      background: #0f6cbf;
+      color: white;
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    }
+    .moodle-header .logo { font-size: 22px; font-weight: 700; letter-spacing: 1px; }
+    .moodle-header .nav { display: flex; gap: 20px; font-size: 14px; opacity: .85; }
+    .moodle-header .nav span { cursor: pointer; }
+    .moodle-header .nav span:hover { opacity: 1; text-decoration: underline; }
+
+    /* Fake Moodle content */
+    .moodle-breadcrumb {
+      background: #fff;
+      padding: 10px 24px;
+      font-size: 13px;
+      color: #666;
+      border-bottom: 1px solid #ddd;
+    }
+    .moodle-content {
+      max-width: 900px;
+      margin: 30px auto;
+      padding: 0 24px;
+    }
+    .moodle-content h1 { font-size: 24px; color: #333; margin-bottom: 8px; }
+    .moodle-content .course-summary {
+      background: white;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.08);
+      color: #555;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    .moodle-section {
+      background: white;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.08);
+      overflow: hidden;
+    }
+    .moodle-section-title {
+      background: #e8f4fd;
+      padding: 12px 20px;
+      font-weight: 600;
+      color: #0f6cbf;
+      font-size: 15px;
+      border-bottom: 1px solid #c8e3f8;
+    }
+    .moodle-activity {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 20px;
+      border-bottom: 1px solid #f0f0f0;
+      font-size: 14px;
+      color: #333;
+    }
+    .moodle-activity:last-child { border-bottom: none; }
+    .moodle-activity .icon { font-size: 18px; width: 24px; text-align: center; }
+    .moodle-activity a { color: #0f6cbf; text-decoration: none; }
+    .moodle-activity a:hover { text-decoration: underline; }
+
+    /* ── Widget styles (same as ec.js) ── */
+    :root {
+      --ec-bg:        #1a1a2e;
+      --ec-bg2:       #16213e;
+      --ec-bg3:       #0f3460;
+      --ec-accent:    #e94560;
+      --ec-accent2:   #533483;
+      --ec-text:      #eaeaea;
+      --ec-text-dim:  #8892a4;
+      --ec-border:    #2a2a4a;
+      --ec-radius:    12px;
+      --ec-shadow:    0 8px 32px rgba(0,0,0,0.5);
+      --ec-font:      'Segoe UI', system-ui, sans-serif;
+    }
+
+    #ec-widget {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      z-index: 999999;
+      font-family: var(--ec-font);
+      font-size: 14px;
+    }
+
+    #ec-fab {
+      width: 52px; height: 52px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--ec-accent), var(--ec-accent2));
+      border: none; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: var(--ec-shadow);
+      transition: transform .2s, box-shadow .2s;
+      margin-left: auto;
+    }
+    #ec-fab:hover { transform: scale(1.1); box-shadow: 0 12px 40px rgba(233,69,96,.4); }
+    #ec-fab svg { width: 24px; height: 24px; fill: white; }
+
+    #ec-panel {
+      width: 380px; height: 560px;
+      background: var(--ec-bg);
+      border: 1px solid var(--ec-border);
+      border-radius: var(--ec-radius);
+      box-shadow: var(--ec-shadow);
+      display: flex; flex-direction: column;
+      overflow: hidden;
+      margin-bottom: 12px;
+      transition: opacity .2s, transform .2s;
+    }
+    #ec-panel.ec-hidden { opacity: 0; pointer-events: none; transform: translateY(10px) scale(.97); }
+
+    #ec-header {
+      background: var(--ec-bg2);
+      padding: 12px 16px;
+      display: flex; align-items: center; gap: 10px;
+      border-bottom: 1px solid var(--ec-border);
+      flex-shrink: 0;
+    }
+    #ec-header-logo { font-size: 18px; }
+    #ec-header-title { font-weight: 700; color: var(--ec-text); flex: 1; font-size: 15px; }
+    #ec-header-sub { font-size: 11px; color: var(--ec-text-dim); }
+    #ec-header-status {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: #4caf50; box-shadow: 0 0 6px #4caf50;
+    }
+    #ec-header-status.offline { background: #f44336; box-shadow: 0 0 6px #f44336; }
+
+    #ec-tabs {
+      display: flex; background: var(--ec-bg2);
+      border-bottom: 1px solid var(--ec-border); flex-shrink: 0;
+    }
+    .ec-tab {
+      flex: 1; padding: 8px 4px;
+      background: none; border: none;
+      border-bottom: 2px solid transparent;
+      color: var(--ec-text-dim); cursor: pointer;
+      font-size: 12px; font-family: var(--ec-font);
+      transition: color .15s, border-color .15s;
+    }
+    .ec-tab:hover { color: var(--ec-text); }
+    .ec-tab.active { color: var(--ec-accent); border-bottom-color: var(--ec-accent); }
+
+    .ec-tab-content { display: none; flex: 1; flex-direction: column; overflow: hidden; }
+    .ec-tab-content.active { display: flex; }
+
+    /* Chat */
+    #ec-messages {
+      flex: 1; overflow-y: auto; padding: 12px;
+      display: flex; flex-direction: column; gap: 10px;
+      scrollbar-width: thin; scrollbar-color: var(--ec-border) transparent;
+    }
+    .ec-msg {
+      max-width: 88%; padding: 9px 13px; border-radius: 10px;
+      line-height: 1.5; word-break: break-word; font-size: 13px;
+    }
+    .ec-msg.user {
+      background: var(--ec-accent); color: white;
+      align-self: flex-end; border-bottom-right-radius: 3px;
+    }
+    .ec-msg.assistant {
+      background: var(--ec-bg2); color: var(--ec-text);
+      align-self: flex-start; border-bottom-left-radius: 3px;
+      border: 1px solid var(--ec-border);
+    }
+    .ec-msg.assistant .ec-sources {
+      margin-top: 8px; padding-top: 6px;
+      border-top: 1px solid var(--ec-border);
+      font-size: 11px; color: var(--ec-text-dim);
+    }
+    .ec-msg.assistant .ec-sources span { display: block; }
+    .ec-msg.typing span {
+      display: inline-block; width: 6px; height: 6px;
+      background: var(--ec-text-dim); border-radius: 50%;
+      margin: 0 2px; animation: ec-bounce .8s infinite;
+    }
+    .ec-msg.typing span:nth-child(2) { animation-delay: .15s; }
+    .ec-msg.typing span:nth-child(3) { animation-delay: .3s; }
+    @keyframes ec-bounce {
+      0%,80%,100% { transform: translateY(0); }
+      40%          { transform: translateY(-5px); }
+    }
+
+    #ec-chat-input-row {
+      display: flex; gap: 8px; padding: 10px;
+      border-top: 1px solid var(--ec-border);
+      background: var(--ec-bg2); flex-shrink: 0;
+    }
+    #ec-chat-input {
+      flex: 1; background: var(--ec-bg3);
+      border: 1px solid var(--ec-border); border-radius: 8px;
+      padding: 8px 12px; color: var(--ec-text);
+      font-family: var(--ec-font); font-size: 13px;
+      resize: none; outline: none; max-height: 80px;
+    }
+    #ec-chat-input:focus { border-color: var(--ec-accent); }
+    #ec-chat-send {
+      background: var(--ec-accent); border: none; border-radius: 8px;
+      width: 36px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background .15s; flex-shrink: 0;
+    }
+    #ec-chat-send:hover { background: #c73652; }
+    #ec-chat-send svg { width: 16px; height: 16px; fill: white; }
+
+    /* Index */
+    #ec-index-content {
+      padding: 16px; display: flex; flex-direction: column;
+      gap: 12px; overflow-y: auto; flex: 1;
+    }
+    .ec-course-badge {
+      background: var(--ec-bg3); border: 1px solid var(--ec-border);
+      border-radius: 8px; padding: 10px 14px;
+      display: flex; align-items: center; justify-content: space-between;
+      font-size: 13px; color: var(--ec-text);
+    }
+    .ec-course-badge .ec-badge-name { font-weight: 600; flex: 1; }
+    .ec-course-badge .ec-badge-chunks { color: var(--ec-text-dim); font-size: 11px; }
+    .ec-btn {
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      padding: 10px 16px; border-radius: 8px; border: none; cursor: pointer;
+      font-family: var(--ec-font); font-size: 13px; font-weight: 600;
+      transition: opacity .15s, transform .1s;
+    }
+    .ec-btn:active { transform: scale(.97); }
+    .ec-btn-primary { background: var(--ec-accent); color: white; }
+    .ec-btn-secondary { background: var(--ec-bg3); color: var(--ec-text); border: 1px solid var(--ec-border); }
+    .ec-progress-wrap { background: var(--ec-bg3); border-radius: 6px; overflow: hidden; height: 6px; }
+    .ec-progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, var(--ec-accent), var(--ec-accent2));
+      border-radius: 6px; transition: width .4s;
+    }
+    .ec-log {
+      background: var(--ec-bg2); border: 1px solid var(--ec-border);
+      border-radius: 8px; padding: 10px; font-size: 11px; color: var(--ec-text-dim);
+      max-height: 130px; overflow-y: auto; line-height: 1.6;
+      font-family: 'Menlo', 'Consolas', monospace;
+    }
+
+    /* Quiz */
+    #ec-quiz-content {
+      padding: 16px; display: flex; flex-direction: column;
+      gap: 12px; overflow-y: auto; flex: 1;
+    }
+    .ec-form-row { display: flex; flex-direction: column; gap: 4px; }
+    .ec-label { font-size: 11px; color: var(--ec-text-dim); text-transform: uppercase; letter-spacing: .5px; }
+    .ec-input, .ec-select {
+      background: var(--ec-bg3); border: 1px solid var(--ec-border);
+      border-radius: 8px; padding: 8px 12px; color: var(--ec-text);
+      font-family: var(--ec-font); font-size: 13px; outline: none;
+    }
+    .ec-input:focus, .ec-select:focus { border-color: var(--ec-accent); }
+    .ec-select option { background: var(--ec-bg); }
+    .ec-question {
+      background: var(--ec-bg2); border: 1px solid var(--ec-border);
+      border-radius: 10px; padding: 14px;
+      display: flex; flex-direction: column; gap: 10px;
+    }
+    .ec-question-text { color: var(--ec-text); font-weight: 600; line-height: 1.4; }
+    .ec-option {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 12px; border-radius: 7px;
+      border: 1px solid var(--ec-border); cursor: pointer;
+      transition: background .15s, border-color .15s;
+      color: var(--ec-text-dim); font-size: 13px;
+    }
+    .ec-option:hover { background: var(--ec-bg3); color: var(--ec-text); }
+    .ec-option.selected { border-color: var(--ec-accent); color: var(--ec-text); background: rgba(233,69,96,.1); }
+    .ec-option.correct { border-color: #4caf50; background: rgba(76,175,80,.15); color: #4caf50; }
+    .ec-option.wrong { border-color: #f44336; background: rgba(244,67,54,.15); color: #f44336; }
+    .ec-option-letter {
+      width: 22px; height: 22px; border-radius: 50%;
+      background: var(--ec-border);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 700; flex-shrink: 0;
+    }
+    .ec-explanation {
+      font-size: 12px; color: var(--ec-text-dim);
+      padding: 8px 10px; background: var(--ec-bg); border-radius: 6px;
+      border-left: 3px solid var(--ec-accent); line-height: 1.5;
+    }
+    .ec-quiz-score {
+      text-align: center; padding: 12px;
+      font-size: 22px; font-weight: 700; color: var(--ec-accent);
+    }
+
+    /* Toasts */
+    #ec-toasts {
+      position: fixed; bottom: 90px; right: 24px; z-index: 1000000;
+      display: flex; flex-direction: column; gap: 8px; pointer-events: none;
+    }
+    .ec-toast {
+      background: var(--ec-bg2); border: 1px solid var(--ec-border);
+      color: var(--ec-text); padding: 10px 16px; border-radius: 8px;
+      font-size: 13px; box-shadow: var(--ec-shadow);
+      animation: ec-slide-in .25s ease; max-width: 300px;
+    }
+    .ec-toast.success { border-left: 3px solid #4caf50; }
+    .ec-toast.error   { border-left: 3px solid #f44336; }
+    .ec-toast.info    { border-left: 3px solid var(--ec-accent); }
+    @keyframes ec-slide-in {
+      from { opacity: 0; transform: translateX(20px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Fake Moodle page -->
+  <div class="moodle-header">
+    <div class="logo">Moodle</div>
+    <div class="nav">
+      <span>Home</span>
+      <span>My courses</span>
+      <span>Calendar</span>
+    </div>
+  </div>
+  <div class="moodle-breadcrumb">
+    Home › Courses › Sisteme de Operare
+  </div>
+  <div class="moodle-content">
+    <h1>Sisteme de Operare</h1>
+    <div class="course-summary">
+      <strong>Descriere:</strong> Acest curs acoperă conceptele fundamentale ale sistemelor de operare moderne,
+      inclusiv gestionarea proceselor, memoriei, sistemelor de fișiere și securității.
+    </div>
+
+    <div class="moodle-section">
+      <div class="moodle-section-title">Săptămâna 1 — Introducere în SO</div>
+      <div class="moodle-activity"><span class="icon">📄</span><a href="#">Introducere — Sisteme de Operare.pdf</a></div>
+      <div class="moodle-activity"><span class="icon">🌐</span><a href="#">Pagina cursului — Concepte de bază</a></div>
+      <div class="moodle-activity"><span class="icon">📝</span><a href="#">Quiz — Introducere</a></div>
+    </div>
+
+    <div class="moodle-section">
+      <div class="moodle-section-title">Săptămâna 2 — Gestiunea Proceselor</div>
+      <div class="moodle-activity"><span class="icon">📄</span><a href="#">Procese și Fire de Execuție.pdf</a></div>
+      <div class="moodle-activity"><span class="icon">📄</span><a href="#">Scheduling Algorithms.pdf</a></div>
+      <div class="moodle-activity"><span class="icon">🌐</span><a href="#">Lab 2 — Simulare Scheduling</a></div>
+    </div>
+
+    <div class="moodle-section">
+      <div class="moodle-section-title">Săptămâna 3 — Gestiunea Memoriei</div>
+      <div class="moodle-activity"><span class="icon">📄</span><a href="#">Memorie Virtuală și Paginare.pdf</a></div>
+      <div class="moodle-activity"><span class="icon">🌐</span><a href="#">Exerciții — Paginare</a></div>
+    </div>
+  </div>
+
+  <!-- Toasts -->
+  <div id="ec-toasts"></div>
+
+  <!-- Widget -->
+  <div id="ec-widget">
+    <div id="ec-panel" class="ec-hidden">
+      <div id="ec-header">
+        <span id="ec-header-logo">🤖</span>
+        <div style="flex:1">
+          <div id="ec-header-title">Else AI</div>
+          <div id="ec-header-sub">Sisteme de Operare · ID 42</div>
+        </div>
+        <div id="ec-header-status" title="Backend: Online"></div>
+      </div>
+
+      <div id="ec-tabs">
+        <button class="ec-tab active" data-tab="chat">💬 Chat</button>
+        <button class="ec-tab" data-tab="index">📚 Index</button>
+        <button class="ec-tab" data-tab="quiz">📝 Quiz</button>
+      </div>
+
+      <!-- CHAT -->
+      <div class="ec-tab-content active" id="ec-tab-chat">
+        <div id="ec-messages">
+          <div class="ec-msg assistant">
+            Salut! 👋 Sunt asistentul tău AI pentru cursul <strong>Sisteme de Operare</strong>.<br><br>
+            Cursul este deja indexat. Poți să mă întrebi orice legat de materialele cursului.
+          </div>
+          <div class="ec-msg user">Ce este memoria virtuală?</div>
+          <div class="ec-msg assistant">
+            Memoria virtuală permite proceselor să adreseze mai multă memorie decât cea fizică disponibilă. Se implementează prin <strong>paginare</strong> și <strong>segmentare</strong>.<br><br>
+            La accesarea unei pagini absente din RAM, se produce un <em>page fault</em>, iar SO încarcă pagina de pe disc.
+            <div class="ec-sources">
+              <span>📄 Memorie Virtuală și Paginare — Săptămâna 3</span>
+              <span>📄 Introducere — Sisteme de Operare — Săptămâna 1</span>
+            </div>
+          </div>
+          <div class="ec-msg typing"><span></span><span></span><span></span></div>
+        </div>
+        <div id="ec-chat-input-row">
+          <textarea id="ec-chat-input" rows="1" placeholder="Întreabă ceva despre curs..."></textarea>
+          <button id="ec-chat-send">
+            <svg viewBox="0 0 24 24"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- INDEX -->
+      <div class="ec-tab-content" id="ec-tab-index">
+        <div id="ec-index-content">
+          <div class="ec-course-badge">
+            <div>
+              <div class="ec-badge-name">Sisteme de Operare (ID: 42)</div>
+              <div class="ec-badge-chunks">✅ Indexat — 248 chunks</div>
+            </div>
+            <span>✅</span>
+          </div>
+          <button class="ec-btn ec-btn-primary">⚡ Indexează cursul</button>
+          <button class="ec-btn ec-btn-secondary">🔄 Re-indexează tot</button>
+          <div>
+            <div class="ec-progress-wrap">
+              <div class="ec-progress-bar" id="ec-demo-bar" style="width: 72%"></div>
+            </div>
+            <div style="margin-top:4px; font-size:11px; color:var(--ec-text-dim)">72% — Procesare PDF: Memorie Virtuală...</div>
+          </div>
+          <div class="ec-log">> Pornire indexare curs 42...
+> Descărcare: Introducere — Sisteme de Operare.pdf
+> ✅ Indexat modul: Introducere (12 chunks)
+> Descărcare: Procese și Fire de Execuție.pdf
+> ✅ Indexat modul: Procese (18 chunks)
+> Procesare PDF: Memorie Virtuală și Paginare.pdf...</div>
+        </div>
+      </div>
+
+      <!-- QUIZ -->
+      <div class="ec-tab-content" id="ec-tab-quiz">
+        <div id="ec-quiz-content">
+          <div id="ec-quiz-form" style="display:flex; flex-direction:column; gap:12px">
+            <div class="ec-form-row">
+              <label class="ec-label">Topic (opțional)</label>
+              <input class="ec-input" placeholder="Ex: Scheduling, Memorie virtuală...">
+            </div>
+            <div style="display:flex; gap:10px">
+              <div class="ec-form-row" style="flex:1">
+                <label class="ec-label">Număr întrebări</label>
+                <select class="ec-select">
+                  <option>5</option>
+                  <option selected>10</option>
+                  <option>15</option>
+                  <option>20</option>
+                </select>
+              </div>
+              <div class="ec-form-row" style="flex:1">
+                <label class="ec-label">Dificultate</label>
+                <select class="ec-select">
+                  <option>Ușor</option>
+                  <option selected>Mediu</option>
+                  <option>Greu</option>
+                </select>
+              </div>
+            </div>
+            <button class="ec-btn ec-btn-primary" id="ec-demo-quiz-btn">🎯 Generează Quiz</button>
+          </div>
+
+          <!-- Demo quiz questions (hidden by default, shown after click) -->
+          <div id="ec-demo-questions" style="display:none; flex-direction:column; gap:14px">
+            <div class="ec-quiz-score">2/3 — 67%</div>
+
+            <div class="ec-question">
+              <div class="ec-question-text">1. Ce algoritm de scheduling asigură timp CPU egal pentru toate procesele?</div>
+              <div class="ec-option correct"><div class="ec-option-letter">A</div><span>Round Robin</span></div>
+              <div class="ec-option wrong"><div class="ec-option-letter">B</div><span>First Come First Served</span></div>
+              <div class="ec-option"><div class="ec-option-letter">C</div><span>Shortest Job First</span></div>
+              <div class="ec-option"><div class="ec-option-letter">D</div><span>Priority Scheduling</span></div>
+              <div class="ec-explanation">Round Robin alocă un <em>quantum</em> fix de timp fiecărui proces în mod circular, garantând echitate.</div>
+            </div>
+
+            <div class="ec-question">
+              <div class="ec-question-text">2. Ce eveniment se produce când o pagină necesară nu se află în RAM?</div>
+              <div class="ec-option correct"><div class="ec-option-letter">A</div><span>Page Fault</span></div>
+              <div class="ec-option"><div class="ec-option-letter">B</div><span>Segmentation Fault</span></div>
+              <div class="ec-option"><div class="ec-option-letter">C</div><span>Buffer Overflow</span></div>
+              <div class="ec-option"><div class="ec-option-letter">D</div><span>Stack Overflow</span></div>
+              <div class="ec-explanation">Un <em>page fault</em> declanșează SO să încarce pagina din swap space sau fișier.</div>
+            </div>
+
+            <div class="ec-question">
+              <div class="ec-question-text">3. Care este unitatea de alocare a memoriei în paginare?</div>
+              <div class="ec-option"><div class="ec-option-letter">A</div><span>Segment</span></div>
+              <div class="ec-option wrong"><div class="ec-option-letter">B</div><span>Block</span></div>
+              <div class="ec-option correct"><div class="ec-option-letter">C</div><span>Pagină (Page)</span></div>
+              <div class="ec-option"><div class="ec-option-letter">D</div><span>Frame</span></div>
+              <div class="ec-explanation">Paginarea împarte memoria logică în <em>pagini</em> de dimensiune fixă, mapate pe <em>frame-uri</em> fizice.</div>
+            </div>
+
+            <div style="display:flex; gap:10px; margin-top:4px">
+              <button class="ec-btn ec-btn-secondary" style="flex:1" id="ec-demo-reset">🔄 Quiz nou</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <button id="ec-fab" title="Else AI Companion">
+      <svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-3 10H7v-2h10v2zm0-3H7V7h10v2z"/></svg>
+    </button>
+  </div>
+
+  <script>
+    // FAB toggle
+    document.getElementById('ec-fab').addEventListener('click', () => {
+      const panel = document.getElementById('ec-panel');
+      panel.classList.toggle('ec-hidden');
+    });
+
+    // Tabs
+    document.querySelectorAll('.ec-tab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tab = btn.dataset.tab;
+        document.querySelectorAll('.ec-tab').forEach(b => b.classList.toggle('active', b === btn));
+        document.querySelectorAll('.ec-tab-content').forEach(c =>
+          c.classList.toggle('active', c.id === `ec-tab-${tab}`)
+        );
+      });
+    });
+
+    // Auto-resize textarea
+    document.getElementById('ec-chat-input').addEventListener('input', function() {
+      this.style.height = 'auto';
+      this.style.height = Math.min(this.scrollHeight, 80) + 'px';
+    });
+
+    // Demo: send message
+    document.getElementById('ec-chat-send').addEventListener('click', () => {
+      const input = document.getElementById('ec-chat-input');
+      const msg = input.value.trim();
+      if (!msg) return;
+
+      // Remove typing indicator
+      document.querySelector('.ec-msg.typing')?.remove();
+
+      // Add user message
+      const msgs = document.getElementById('ec-messages');
+      const userEl = document.createElement('div');
+      userEl.className = 'ec-msg user';
+      userEl.textContent = msg;
+      msgs.appendChild(userEl);
+
+      input.value = '';
+      input.style.height = 'auto';
+
+      // Add typing indicator
+      const typing = document.createElement('div');
+      typing.className = 'ec-msg typing';
+      typing.innerHTML = '<span></span><span></span><span></span>';
+      msgs.appendChild(typing);
+      msgs.scrollTop = msgs.scrollHeight;
+
+      // Simulate response after delay
+      setTimeout(() => {
+        typing.remove();
+        const reply = document.createElement('div');
+        reply.className = 'ec-msg assistant';
+        reply.innerHTML = `Aceasta este o <strong>previzualizare demo</strong>. Conectează extensia la backend (localhost:8000) pentru răspunsuri reale de la <em>Deepseek</em> bazate pe materialele cursului.`;
+        msgs.appendChild(reply);
+        msgs.scrollTop = msgs.scrollHeight;
+      }, 1500);
+    });
+
+    document.getElementById('ec-chat-input').addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); document.getElementById('ec-chat-send').click(); }
+    });
+
+    // Demo: animate progress bar
+    let pct = 72;
+    setInterval(() => {
+      if (pct < 100) {
+        pct = Math.min(100, pct + Math.random() * 3);
+        document.getElementById('ec-demo-bar').style.width = pct + '%';
+      }
+    }, 800);
+
+    // Demo: generate quiz
+    document.getElementById('ec-demo-quiz-btn').addEventListener('click', function() {
+      this.textContent = '⏳ Se generează...';
+      this.disabled = true;
+      setTimeout(() => {
+        document.getElementById('ec-quiz-form').style.display = 'none';
+        const q = document.getElementById('ec-demo-questions');
+        q.style.display = 'flex';
+        showToast('✅ Quiz generat: 3 întrebări', 'success');
+      }, 1200);
+    });
+
+    // Demo: reset quiz
+    document.getElementById('ec-demo-reset').addEventListener('click', () => {
+      document.getElementById('ec-demo-questions').style.display = 'none';
+      const form = document.getElementById('ec-quiz-form');
+      form.style.display = 'flex';
+      const btn = document.getElementById('ec-demo-quiz-btn');
+      btn.textContent = '🎯 Generează Quiz';
+      btn.disabled = false;
+    });
+
+    // Toast helper
+    function showToast(msg, type = 'info') {
+      const t = document.createElement('div');
+      t.className = `ec-toast ${type}`;
+      t.textContent = msg;
+      document.getElementById('ec-toasts').appendChild(t);
+      setTimeout(() => t.remove(), 4000);
+    }
+
+    // Show toast on load
+    setTimeout(() => showToast('Preview mode — backend la localhost:8000', 'info'), 800);
+
+    // Open panel by default for preview
+    document.getElementById('ec-panel').classList.remove('ec-hidden');
+  </script>
+</body>
+</html>
