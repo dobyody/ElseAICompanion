@@ -13,8 +13,8 @@ class Settings(BaseSettings):
     # ── Moodle ───────────────────────────────────────────────────────────────
     # URL-ul instalației Moodle target (fără slash final)
     moodle_url: str = Field(default="https://else.fcim.utm.md", alias="MOODLE_URL")
-    # Token de serviciu web Moodle (generat în Site administration > Plugins > Web services)
-    moodle_token: str = Field(default="356fef222414c38b9548b56d254c59fd", alias="MOODLE_TOKEN")
+    # moodle web service token — set in .env, no default on purpose
+    moodle_token: str = Field(alias="MOODLE_TOKEN")
 
     # ── Ollama ───────────────────────────────────────────────────────────────
     # URL-ul serverului Ollama local
