@@ -610,8 +610,16 @@
         headers: { 'Content-Type': 'application/json' },
         data: JSON.stringify(body),
         onload: r => {
-          try { resolve(JSON.parse(r.responseText)); }
-          catch { reject(new Error(r.responseText)); }
+          try {
+            const parsed = JSON.parse(r.responseText);
+            if (r.status >= 400) {
+              reject(new Error(parsed.detail || `HTTP ${r.status}`));
+            } else {
+              resolve(parsed);
+            }
+          } catch {
+            reject(new Error(`HTTP ${r.status}: ${r.responseText.slice(0, 200)}`));
+          }
         },
         onerror: () => reject(new Error('Network error')),
       });

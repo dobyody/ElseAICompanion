@@ -344,7 +344,8 @@ async def quiz_endpoint(req: QuizRequest):
             difficulty=req.difficulty,
         )
     except (ValueError, RuntimeError) as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        logger.warning(f"Quiz generation error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
         logger.exception(f"Quiz generation unexpected error: {e}")
         raise HTTPException(status_code=500, detail=str(e))

@@ -358,16 +358,51 @@ async def generate_quiz(
     questions: list[QuizQuestion] = []
     for item in data[:num_questions]:
         try:
+            # normalise question text — try common key variants
+            q_text = (
+                item.get("question") or item.get("q") or
+                item.get("text") or item.get("prompt") or ""
+            ).strip()
+            if not q_text:
+                logger.warning(f"skipped question with no text: {item}")
+                continue
+
+            # normalise options — try common key variants
+            opts = (
+                item.get("options") or item.get("choices") or
+                item.get("answers") or item.get("variants") or []
+            )
+            opts = [str(o) for o in opts]  # ensure strings
+            # ensure exactly 4 options
+            if len(opts) > 4:
+                opts = opts[:4]
+            while len(opts) < 4:
+                opts.append(f"— option {len(opts)+1} —")
+
+            # normalise correct_index — handle int OR letter ("A"/"a"/"0")
+            raw_idx = (
+                item.get("correct_index") if item.get("correct_index") is not None
+                else item.get("answer") or item.get("correct") or item.get("correct_answer") or 0
+            )
+            if isinstance(raw_idx, str):
+                raw_idx = raw_idx.strip()
+                if raw_idx.upper() in ("A", "B", "C", "D"):
+                    raw_idx = ord(raw_idx.upper()) - ord("A")  # A→0, B→1 …
+                else:
+                    raw_idx = int(raw_idx)
+            correct_idx = max(0, min(3, int(raw_idx)))  # clamp to 0-3
+
             questions.append(QuizQuestion(
-                question=item["question"],
-                options=item["options"][:4],
-                correct_index=int(item["correct_index"]),
+                question=q_text,
+                options=opts,
+                correct_index=correct_idx,
                 explanation=item.get("explanation", ""),
             ))
         except Exception as e:
             logger.warning(f"skipped invalid question: {e} | {item}")
 
     if not questions:
-        raise ValueError("model generated zero valid questions")
+        logger.error(f"all questions were invalid, raw output was:\n{raw[:800]}")
+        raise ValueError("model generated zero valid questions — check logs for raw LLM output")
 
     return questions
