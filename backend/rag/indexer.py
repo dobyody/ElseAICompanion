@@ -5,7 +5,7 @@ flow:
   1. fetch module list from moodle api
   2. for each module → download/extract text
   3. split into chunks
-  4. generate embeddings with sentence-transformers
+  4. generate embeddings with nomic-embed-text via ollama
   5. store in chromadb collection for this course
 
 deduplication: each chunk id is 'mod_{module_id}_c{chunk_idx}'
@@ -21,9 +21,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import AsyncGenerator
 
+import ollama
 import chromadb
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from sentence_transformers import SentenceTransformer
 
 from config import settings
 from models import IndexProgress, IndexStatus
@@ -44,7 +44,7 @@ _embedder = None
 _splitter = RecursiveCharacterTextSplitter(
     chunk_size=settings.chunk_size,
     chunk_overlap=settings.chunk_overlap,
-    separators=["\n\n", "\n", ". ", " ", ""],
+    separators=["\n\n\n", "\n\n", "\n", ". ", "; ", ", ", " ", ""],
 )
 
 
@@ -56,12 +56,47 @@ def get_chroma() -> chromadb.PersistentClient:
     return _chroma_client
 
 
-def get_embedder() -> SentenceTransformer:
-    """returns the embedding model, downloads and loads it lazily on first call"""
+class _Embeddings:
+    """thin list wrapper so .tolist() works like numpy arrays"""
+    def __init__(self, data: list):
+        self._data = data
+    def tolist(self) -> list:
+        return self._data
+    def __iter__(self):
+        return iter(self._data)
+
+
+class OllamaEmbedder:
+    """Wraps Ollama's embed API with support for task prefixes.
+
+    nomic-embed-text was trained with task-specific prefixes that dramatically
+    improve retrieval quality. Always use:
+      - prefix="search_document: " when embedding documents/chunks
+      - prefix="search_query: "    when embedding user queries
+    """
+    def __init__(self, model: str):
+        self.model = model
+        self._client = ollama.Client(host=settings.ollama_url)
+
+    def encode(self, texts: list[str], prefix: str = "", **kwargs) -> _Embeddings:
+        if prefix:
+            texts = [f"{prefix}{t}" for t in texts]
+        # Batch in groups of 64 to avoid overwhelming Ollama with huge payloads
+        all_embeddings = []
+        batch_size = 64
+        for i in range(0, len(texts), batch_size):
+            batch = texts[i:i + batch_size]
+            result = self._client.embed(model=self.model, input=batch)
+            all_embeddings.extend(result['embeddings'])
+        return _Embeddings(all_embeddings)
+
+
+def get_embedder() -> OllamaEmbedder:
+    """returns the embedding model singleton, creates it lazily on first call"""
     global _embedder
     if _embedder is None:
-        logger.info(f"loading embedding model: {settings.embedding_model}")
-        _embedder = SentenceTransformer(settings.embedding_model)
+        logger.info(f"loading embedding model via ollama: {settings.embedding_model}")
+        _embedder = OllamaEmbedder(model=settings.embedding_model)
     return _embedder
 
 
@@ -92,6 +127,19 @@ def module_is_indexed(collection: chromadb.Collection, module_id: int) -> bool:
         include=[],          # we just want to know if it exists
     )
     return len(result["ids"]) > 0
+
+
+def _enrich_for_embedding(text: str, module_name: str, section_name: str) -> str:
+    """Prepends contextual metadata to chunk text before computing its embedding.
+
+    This is the single most impactful RAG improvement (research shows 20-67% recall
+    boost). The embedding captures not just WHAT the text says, but WHERE it comes
+    from (which module, which section). Ambiguous text gets disambiguated by context.
+
+    The raw chunk text is stored in ChromaDB as-is (returned on retrieval),
+    but the embedding is computed from this enriched version.
+    """
+    return f"[Module: {module_name} | Section: {section_name}]\n{text}"
 
 
 def embed_and_store(
@@ -127,10 +175,15 @@ def embed_and_store(
     if not chunks:
         return 0
 
+    # Contextual enrichment: embed with metadata prefix for dramatically better retrieval
+    # Raw text → stored in ChromaDB documents (returned on query)
+    # Enriched text → used only for embedding computation (captures semantic context)
     embedder = get_embedder()
-    embeddings = embedder.encode(chunks, show_progress_bar=False).tolist()
+    enriched = [_enrich_for_embedding(c, module_name, section_name) for c in chunks]
+    embeddings = embedder.encode(enriched, prefix="search_document: ").tolist()
 
-    ids       = [f"mod_{module_id}_c{i}" for i in range(len(chunks))]
+    n_chunks  = len(chunks)
+    ids       = [f"mod_{module_id}_c{i}" for i in range(n_chunks)]
     metadatas = [
         {
             "course_id":    course_id,
@@ -140,9 +193,10 @@ def embed_and_store(
             "source_type":  source_type,
             "source_url":   source_url,
             "chunk_index":  i,
+            "chunk_total":  n_chunks,
             "content_hash": hashlib.md5(chunks[i].encode()).hexdigest(),
         }
-        for i in range(len(chunks))
+        for i in range(n_chunks)
     ]
 
     collection.upsert(ids=ids, embeddings=embeddings, documents=chunks, metadatas=metadatas)

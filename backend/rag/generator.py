@@ -28,18 +28,25 @@ def _msg_content(part) -> str:
 
 # ── Prompt templates ─────────────────────────────────────────────────────────
 
-SYSTEM_CHAT = """You are an AI assistant for students, specialized in course materials.
-Answer ONLY based on the context provided from the course materials.
-If the information is not found in the context, clearly state that you don't have information on that topic.
-Answer in the same language as the question (Romanian or English).
-IMPORTANT: The context may sometimes contain technical artifacts or markup fragments — ignore them completely and focus only on the readable educational content.
-Be concise, precise, and helpful."""
+SYSTEM_CHAT = """You are a knowledgeable AI tutor for university students. You have access to course materials provided as context below.
 
-SYSTEM_QUIZ = """You are an educational quiz generator.
-You generate multiple-choice questions (4 options, one correct answer).
-You respond EXCLUSIVELY with valid JSON, no additional text before or after the JSON.
-Ignore any HTML, CSS or JavaScript fragments in the source material — use only readable educational text.
-Respond in the same language as the request (Romanian or English). If unclear, use the course language."""
+RESPONSE RULES:
+1. PRIORITIZE course materials — always cite specific content when available.
+2. If the context fully answers the question, answer from context only.
+3. If the context is incomplete, supplement with your general knowledge and mark it: “(supplementary — not from course materials)”.
+4. NEVER refuse a clear academic question. Always help to the best of your ability.
+5. Answer in the SAME LANGUAGE as the question (Romanian or English).
+6. Be structured and clear: use headings, bullet points, and numbered lists where appropriate.
+7. For math formulas, use LaTeX: inline $formula$ or display $$formula$$.
+8. Ignore any HTML, CSS, JavaScript or markup artifacts in the source material."""
+
+SYSTEM_QUIZ = """You are an educational quiz generator for university courses.
+Generate multiple-choice questions with exactly 4 options (one correct answer).
+Respond EXCLUSIVELY with a valid JSON array — no text, no markdown fences, no commentary.
+Each question should test genuine understanding, not just word matching.
+Write explanations that teach the student WHY the correct answer is right.
+Ignore HTML/CSS/JavaScript fragments in the source material.
+Language: match the request language (Romanian/English). If unclear, use the language of the source material."""
 
 
 def _sanitize_chunk_text(text: str) -> str:
@@ -73,20 +80,54 @@ def _is_chunk_useful(text: str) -> bool:
 
 
 def _build_context_str(chunks: list[dict]) -> str:
-    """builds the context string from retrieved chunks, skipping noise"""
+    """Builds context string from retrieved chunks with expanded neighbor context.
+
+    Each chunk may include context_before/context_after from neighbor expansion.
+    Total context is capped at settings.max_context_chars to fit LLM window.
+    Chunks are sanitized and noise-filtered before inclusion.
+    """
     if not chunks:
         return "No indexed materials available for this course."
+
+    max_chars = settings.max_context_chars
     parts = []
+    total_chars = 0
+
     for i, c in enumerate(chunks, 1):
         text = _sanitize_chunk_text(c["text"])
         if not _is_chunk_useful(text):
             logger.debug(f"chunk {i} skipped (noise/too short)")
             continue
-        # Truncate very long chunks to avoid context overflow
-        if len(text) > 1500:
-            text = text[:1500] + "…"
+
+        # Build expanded passage: context_before + main chunk + context_after
+        passage_parts = []
+        before = c.get("context_before", "")
+        if before:
+            before = _sanitize_chunk_text(before)
+            if _is_chunk_useful(before):
+                passage_parts.append(before)
+        passage_parts.append(text)
+        after = c.get("context_after", "")
+        if after:
+            after = _sanitize_chunk_text(after)
+            if _is_chunk_useful(after):
+                passage_parts.append(after)
+
+        full_text = "\n\n".join(passage_parts)
+
+        # Respect total context budget
+        remaining = max_chars - total_chars
+        if remaining <= 200:
+            logger.debug(f"Context budget exhausted at chunk {i}, stopping")
+            break
+        if len(full_text) > remaining:
+            full_text = full_text[:remaining] + "…"
+
         source = f"{c['module_name']} ({c['section_name']})"
-        parts.append(f"[Source {i}: {source}]\n{text}")
+        part = f"[Source {i}: {source}]\n{full_text}"
+        parts.append(part)
+        total_chars += len(part)
+
     if not parts:
         return "The retrieved materials did not contain usable text for this query."
     return "\n\n---\n\n".join(parts)
@@ -109,7 +150,7 @@ async def chat_stream(
 
     # Retrieval context
     t0 = time.perf_counter()
-    chunks = retrieve(course_id, message)
+    chunks = retrieve(course_id, message, history=history)
     t1 = time.perf_counter()
     context_str = _build_context_str(chunks)
     t2 = time.perf_counter()
@@ -136,17 +177,21 @@ async def chat_stream(
         client = ollama.AsyncClient(host=settings.ollama_url)
         t_llm = time.perf_counter()
         first_token = True
+        token_count = 0
         async for part in await client.chat(
             model=settings.ollama_model,
             messages=messages,
             stream=True,
+            options={"num_predict": settings.num_predict_chat},
         ):
             token = _msg_content(part)
             if token:
                 if first_token:
                     logger.info(f"[PERF] chat first token: {time.perf_counter()-t_llm:.3f}s")
                     first_token = False
+                token_count += 1
                 yield token
+        logger.info(f"[PERF] chat LLM total: {time.perf_counter()-t_llm:.3f}s | tokens≈{token_count}")
     except Exception as e:
         logger.error(f"ollama chat error: {e}")
         yield f"\n\n❌ something went wrong: {e}"
@@ -165,7 +210,7 @@ async def chat(
 
     # Single retrieval — reused for both generation and sources
     t0 = time.perf_counter()
-    chunks = retrieve(course_id, message)
+    chunks = retrieve(course_id, message, history=history)
     t1 = time.perf_counter()
     context_str = _build_context_str(chunks)
     t2 = time.perf_counter()
@@ -187,6 +232,7 @@ async def chat(
             model=settings.ollama_model,
             messages=messages,
             stream=True,
+            options={"num_predict": settings.num_predict_chat},
         ):
             token = _msg_content(part)
             if token:
@@ -282,15 +328,25 @@ async def generate_quiz(
                 {"role": "user",   "content": prompt},
             ],
             stream=False,
+            options={
+                "num_predict": settings.num_predict_quiz,
+                "temperature": 0.4,
+            },
         )
         logger.info(f"[PERF] quiz LLM done: {time.perf_counter()-t_quiz:.3f}s")
         raw = _msg_content(response).strip()
     except Exception as e:
         raise RuntimeError(f"ollama quiz error: {e}") from e
 
-    # deepseek sometimes wraps json in ```json ``` blocks, strip that
-    raw = re.sub(r"^```(?:json)?\s*", "", raw)
-    raw = re.sub(r"\s*```$", "", raw)
+    # deepseek sometimes wraps json in ```json...``` or has prose before/after — extract the array
+    # Try: find the first '[' and last ']' to extract only the JSON array
+    raw = re.sub(r"^```(?:json)?\s*", "", raw)  # strip opening fence if present
+    raw = re.sub(r"\s*```$", "", raw)            # strip closing fence if present
+
+    # Robustly extract the JSON array even if there's surrounding text
+    match = re.search(r"(\[.*\])", raw, re.DOTALL)
+    if match:
+        raw = match.group(1)
 
     try:
         data = json.loads(raw)

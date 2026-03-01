@@ -17,6 +17,7 @@ import json
 import logging
 import logging.handlers
 import sys
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncGenerator
@@ -77,6 +78,28 @@ async def lifespan(app: FastAPI):
     logger.info(f"Moodle URL:   {settings.moodle_url}")
     logger.info(f"ChromaDB dir: {settings.chroma_persist_dir}")
     logger.info("=" * 60)
+
+    # ── Warmup: preload ChromaDB + embedding model so first request is fast ──
+    try:
+        t0 = time.perf_counter()
+        from rag.indexer import get_chroma, get_embedder
+        _chroma = get_chroma()
+        # Touch every existing collection so HNSW indexes load into memory
+        existing = _chroma.list_collections()
+        for col_name in existing:
+            _chroma.get_collection(col_name if isinstance(col_name, str) else col_name.name)
+        t1 = time.perf_counter()
+        logger.info(f"[WARMUP] ChromaDB ready ({len(existing)} collections) in {t1-t0:.3f}s")
+
+        t2 = time.perf_counter()
+        _emb = get_embedder()
+        # Warm up with search_query prefix (used in retrieval pipeline)
+        _emb.encode(["warmup"], prefix="search_query: ")
+        t3 = time.perf_counter()
+        logger.info(f"[WARMUP] Embedder ready in {t3-t2:.3f}s")
+    except Exception as e:
+        logger.warning(f"[WARMUP] Warmup failed (non-fatal): {e}")
+
     yield
     logger.info("Backend oprit.")
 
@@ -97,6 +120,23 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ── Request timing middleware ─────────────────────────────────────────────────
+
+@app.middleware("http")
+async def log_request_timing(request: Request, call_next):
+    """logs total duration for every request — helps spot slow endpoints"""
+    t0 = time.perf_counter()
+    response = await call_next(request)
+    duration = time.perf_counter() - t0
+    # Only log API routes, skip static/health noise
+    if request.url.path.startswith("/api/") and request.url.path != "/api/health":
+        logger.info(
+            f"[REQUEST] {request.method} {request.url.path} → {response.status_code} "
+            f"in {duration:.3f}s"
+        )
+    return response
 
 
 # ── Helpers SSE ───────────────────────────────────────────────────────────────

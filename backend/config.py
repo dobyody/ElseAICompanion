@@ -29,19 +29,28 @@ class Settings(BaseSettings):
         alias="CHROMA_PERSIST_DIR",
     )
 
-    # ── Sentence-Transformers ────────────────────────────────────────────────
-    # Model de embeddings local (descărcat automat la primul rulaj)
+    # ── Embeddings (via Ollama) ──────────────────────────────────────────────
+    # Model de embeddings rulat prin Ollama
     embedding_model: str = Field(
-        default="all-MiniLM-L6-v2", alias="EMBEDDING_MODEL"
+        default="nomic-embed-text:latest", alias="EMBEDDING_MODEL"
     )
 
     # ── RAG ──────────────────────────────────────────────────────────────────
     # Dimensiunea unui chunk de text (în caractere)
-    chunk_size: int = Field(default=1000, alias="CHUNK_SIZE")
+    chunk_size: int = Field(default=1200, alias="CHUNK_SIZE")
     # Suprapunerea dintre chunk-uri consecutive (caractere)
-    chunk_overlap: int = Field(default=150, alias="CHUNK_OVERLAP")
+    chunk_overlap: int = Field(default=200, alias="CHUNK_OVERLAP")
     # Numărul de chunk-uri returnate la retrieval
     retrieval_top_k: int = Field(default=6, alias="RETRIEVAL_TOP_K")
+    # Maximum cosine distance — chunks above this are filtered out (0=identical, 2=opposite)
+    max_distance: float = Field(default=0.60, alias="MAX_DISTANCE")
+    # Number of neighboring chunks to include for context expansion (0 = disabled)
+    neighbor_chunks: int = Field(default=1, alias="NEIGHBOR_CHUNKS")
+    # Maximum total characters of context sent to the LLM
+    max_context_chars: int = Field(default=12000, alias="MAX_CONTEXT_CHARS")
+    # Token generation limits for LLM responses
+    num_predict_chat: int = Field(default=2048, alias="NUM_PREDICT_CHAT")
+    num_predict_quiz: int = Field(default=4096, alias="NUM_PREDICT_QUIZ")
 
     # ── API ──────────────────────────────────────────────────────────────────
     # Port pe care rulează FastAPI

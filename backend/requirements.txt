@@ -7,7 +7,6 @@ pydantic-settings==2.5.2
 
 # RAG Stack
 chromadb==1.5.1
-sentence-transformers==3.2.1
 langchain-text-splitters==0.3.2
 
 # Ollama

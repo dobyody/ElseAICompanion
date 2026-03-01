@@ -11,6 +11,7 @@
 // @grant        GM_getValue
 // @connect      localhost
 // @run-at       document-idle
+// @require      https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js
 // ==/UserScript==
 
 (function () {
@@ -20,6 +21,12 @@
   const API = 'http://localhost:8000';
 
   // ── STYLES ───────────────────────────────────────────────────────────────
+  // Inject KaTeX CSS for math formula rendering
+  const _katexCss = document.createElement('link');
+  _katexCss.rel = 'stylesheet';
+  _katexCss.href = 'https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css';
+  document.head.appendChild(_katexCss);
+
   const _style = document.createElement('style');
   _style.textContent = `
     :root {
@@ -188,6 +195,39 @@
       font-family: 'Menlo','Consolas',monospace;
       font-size: 12px;
     }
+    .ec-msg.assistant pre {
+      background: var(--ec-bg3);
+      border: 1px solid var(--ec-border);
+      border-radius: 6px;
+      padding: 10px 12px;
+      overflow-x: auto;
+      margin: 6px 0;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .ec-msg.assistant pre code {
+      background: none;
+      padding: 0;
+      font-size: inherit;
+    }
+    .ec-msg.assistant .katex-display {
+      margin: 6px 0;
+      overflow-x: auto;
+      overflow-y: hidden;
+    }
+    .ec-msg.assistant .katex {
+      font-size: 1.05em;
+    }
+    .ec-msg.assistant h2, .ec-msg.assistant h3, .ec-msg.assistant h4 {
+      margin: 8px 0 3px;
+      color: var(--ec-text);
+      font-weight: 600;
+    }
+    .ec-msg.assistant ul, .ec-msg.assistant ol {
+      margin: 4px 0;
+      padding-left: 18px;
+    }
+    .ec-msg.assistant li { margin: 2px 0; }
     .ec-sources {
       margin-top: 8px;
       padding-top: 7px;
@@ -518,11 +558,47 @@
   }
 
   function formatMarkdown(text) {
-    return escHtml(text)
+    const slots = [];
+    const slot = (html) => { const i = slots.length; slots.push(html); return `\x00S${i}\x00`; };
+    const _katex = typeof katex !== 'undefined' ? katex : null;
+
+    // 1. Extract fenced code blocks before escaping
+    text = text.replace(/```[\w]*\n?([\s\S]*?)```/g, (_, code) =>
+      slot(`<pre><code>${escHtml(code.trim())}</code></pre>`)
+    );
+
+    // 2. Extract block math $$...$$
+    text = text.replace(/\$\$([\s\S]+?)\$\$/g, (_, math) => {
+      if (!_katex) return slot(`<code>$$${escHtml(math)}$$</code>`);
+      try { return slot(_katex.renderToString(math.trim(), { displayMode: true, throwOnError: false })); }
+      catch { return slot(`<code>$$${escHtml(math)}$$</code>`); }
+    });
+
+    // 3. Extract inline math $...$
+    text = text.replace(/\$([^\n$]+?)\$/g, (_, math) => {
+      if (!_katex) return slot(`<code>$${escHtml(math)}$</code>`);
+      try { return slot(_katex.renderToString(math.trim(), { displayMode: false, throwOnError: false })); }
+      catch { return slot(`<code>$${escHtml(math)}$</code>`); }
+    });
+
+    // 4. HTML-escape the remaining text
+    text = escHtml(text);
+
+    // 5. Apply markdown formatting
+    text = text
+      .replace(/^### (.+)$/gm, '<h4>$1</h4>')
+      .replace(/^## (.+)$/gm, '<h3>$1</h3>')
+      .replace(/^# (.+)$/gm, '<h2>$1</h2>')
       .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
       .replace(/\*(.+?)\*/g, '<em>$1</em>')
-      .replace(/`(.+?)`/g, '<code>$1</code>')
+      .replace(/`([^`]+)`/g, '<code>$1</code>')
+      .replace(/^[-*] (.+)$/gm, '<li>$1</li>')
       .replace(/\n/g, '<br>');
+
+    // 6. Re-insert extracted slots
+    text = text.replace(/\x00S(\d+)\x00/g, (_, i) => slots[+i]);
+
+    return text;
   }
 
   // ── API HELPERS ───────────────────────────────────────────────────────────
