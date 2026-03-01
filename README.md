@@ -26,8 +26,8 @@ Browser (Tampermonkey)              Local Machine
 │  • Index + progress  │            │  │ API       │   │               │  │
 │  • Floating widget   │            │  │ client    │   │ nomic-embed   │  │
 │  • Markdown render   │            │  └───────────┘   │ ChromaDB      │  │
-│                      │            │                   │ Ollama LLM    │  │
-└──────────────────────┘            │                   └───────────────┘  │
+│                      │            │                  │ Ollama LLM    │  │
+└──────────────────────┘            │                  └───────────────┘  │
                                     └─────────────────────────────────────┘
 ```
 
