@@ -294,7 +294,7 @@ Before you can chat or generate quizzes, you need to index course materials.
 5. Find the **Mobile web services** key (or create one if absent).
 6. Copy the token value and paste it into your `.env` file as `MOODLE_TOKEN`.
 
-> If you don't see "Security keys", your Moodle administrator may need to enable web services. Ask them to enable `moodle_mobile_app` web service.
+> If you don't see "Security keys", your Moodle administrator may need to enable web services. Ask them to enable `moodle_mobile_app` web service. Or just ask your Moodle administrator to give you the token.
 
 ---
 
